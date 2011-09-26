@@ -25,15 +25,5 @@ extern struct fuse_operations redifs_oper;
 #define KEY_NODE_ID_CTR "node_id_ctr"
 
 
-/* --- Prototypes ---- */
-extern int redifs_getattr(const char* path, struct stat* stbuf);
-extern int redifs_mkdir(const char* path, mode_t mode);
-extern int redifs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
-                          off_t offset, struct fuse_file_info* fileInfo);
-extern int redifs_open(const char* path, struct fuse_file_info* fileInfo);
-extern int redifs_read(const char* path, char* buf, size_t size, off_t offset,
-                       struct fuse_file_info* fileInfo);
-
-
 #endif // _OPERATIONS_H_
 

@@ -12,6 +12,7 @@
 // ---- Includes:
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include <hiredis/hiredis.h>
 
 #include "connection.h"
