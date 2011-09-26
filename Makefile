@@ -5,7 +5,9 @@ RM = rm
 LIBS = fuse hiredis
 
 LIB_FLAGS = $(addprefix -l,$(LIBS))
-CFLAGS = -g -D_FILE_OFFSET_BITS=64 -DFUSE_USE_VERSION=26
+CDEFINES = _FILE_OFFSET_BITS=64 FUSE_USE_VERSION=26
+CFLAGS = -g -Wall
+CFLAGS += $(addprefix -D,$(CDEFINES))
 
 SRC_DIR = src
 BUILD_DIR = build
@@ -21,7 +23,7 @@ OBJ_PATHS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SRC_PATHS))
 all: $(BUILD_DIR)/redifs
 
 
-$(BUILD_DIR)/redifs: $(OBJ_PATHS)
+$(BUILD_DIR)/redifs: $(OBJ_PATHS) | $(BUILD_DIR)
 	$(CC) $^ -o $@ $(LIB_FLAGS)
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR) $(DEP_DIR)
