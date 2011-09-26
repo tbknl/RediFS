@@ -83,7 +83,7 @@ void releaseReplyHandle(int handle)
 
 
 // ---- Command formatting:
-#define ARGC_MAX 4
+#define ARGC_MAX 16
 
 struct command_format
 {
@@ -100,6 +100,7 @@ enum {
     REDIS_CMD_HSET_INT,
     REDIS_CMD_INCR,
     REDIS_CMD_LINDEX,
+    REDIS_CMD_LSET_INT,
     REDIS_CMD_SET,
     REDIS_CMD_RPUSH_INT,
 };
@@ -107,6 +108,8 @@ enum {
 enum {
     ARG_STR,
     ARG_INT,
+    ARG_STRS,
+    ARG_INTS,
 };
 
 static struct command_format commandFormats[] = {
@@ -115,14 +118,15 @@ static struct command_format commandFormats[] = {
     /* HSET_INT  */ { "HSET",   3, { ARG_STR, ARG_STR, ARG_INT }, 1, { REDIS_REPLY_INTEGER } },
     /* INCR      */ { "INCR",   1, { ARG_STR },          1, { REDIS_REPLY_INTEGER } },
     /* LINDEX    */ { "LINDEX", 2, { ARG_STR, ARG_INT }, 2, { REDIS_REPLY_STRING, REDIS_REPLY_NIL } },
+    /* LSET_INT  */ { "LSET",   3, { ARG_STR, ARG_INT, ARG_INT }, 1, { REDIS_REPLY_STATUS } },
     /* SET       */ { "SET",    2, { ARG_STR, ARG_STR }, 1, { REDIS_REPLY_STATUS } },
-    /* RPUSH_INT */ { "RPUSH",  2, { ARG_STR, ARG_INT }, 1, { REDIS_REPLY_INTEGER } },
+    /* RPUSH_INT */ { "RPUSH",  2, { ARG_STR, ARG_INTS }, 1, { REDIS_REPLY_INTEGER } },
 };
 
 
 // ---- Number conversion buffers:
 #define NUM_CONV_BUF_LEN 32
-#define NUM_CONV_BUF_COUNT 4
+#define NUM_CONV_BUF_COUNT 16
 static char num_conv_bufs[NUM_CONV_BUF_LEN][NUM_CONV_BUF_COUNT];
 
 
@@ -272,7 +276,10 @@ redisReply* execRedisCommand(int cmd, const char* strArgs[], long long intArgs[]
     int numConvBufIndex = 0;
     int replyTypeOk;
     int retries;
+    long long numArgs;
+    long long j;
     int i;
+    int argIndex;
 
     commandFormat = &commandFormats[cmd];
 
@@ -288,15 +295,34 @@ redisReply* execRedisCommand(int cmd, const char* strArgs[], long long intArgs[]
 
     // Fill arguments:
     argv[0] = commandFormat->cmd;
-    for (i = 1; i <= commandFormat->argc; ++i)
+    argIndex = 1;
+    for (i = 0; i < commandFormat->argc; ++i)
     {
-        if (commandFormat->arg_types[i-1] == ARG_STR)
+        switch (commandFormat->arg_types[i])
         {
-            argv[i] = *(strArg_ptr++);
-        }
-        else
-        {
-            argv[i] = redifs_lltoa(*(intArg_ptr++), num_conv_bufs[numConvBufIndex++], NUM_CONV_BUF_LEN);
+            case ARG_STR:
+                argv[argIndex++] = *(strArg_ptr++);
+                break;
+
+            case ARG_INT:
+                argv[argIndex++] = redifs_lltoa(*(intArg_ptr++), num_conv_bufs[numConvBufIndex++], NUM_CONV_BUF_LEN);
+                break;
+
+            case ARG_STRS:
+                numArgs = *(intArg_ptr++);
+                for (j = 0; j < numArgs; ++j)
+                {
+                    argv[argIndex++] = *(strArg_ptr++);
+                }
+                break;
+
+            case ARG_INTS:
+                numArgs = *(intArg_ptr++);
+                for (j = 0; j < numArgs; ++j)
+                {
+                    argv[argIndex++] = redifs_lltoa(*(intArg_ptr++), num_conv_bufs[numConvBufIndex++], NUM_CONV_BUF_LEN);
+                }
+                break;
         }
     }
 
@@ -304,7 +330,7 @@ redisReply* execRedisCommand(int cmd, const char* strArgs[], long long intArgs[]
     retries = 2;
     while (1)
     {
-        reply = redisCommandArgv(redis1, commandFormat->argc + 1, argv, NULL);
+        reply = redisCommandArgv(redis1, argIndex, argv, NULL);
         if (!reply)
         {
             // Try to reconnect:
@@ -456,6 +482,29 @@ int redisCommand_LINDEX(const char* key, long long index, char** result)
 }
 
 
+// Redis LSET command with integer value:
+int redisCommand_LSET_INT(const char* key, long long index, long long value)
+{
+    redisReply* reply;
+    const char* strArgs[] = { key };
+    long long intArgs[] = { index, value };
+
+    reply = execRedisCommand(REDIS_CMD_LSET_INT, strArgs, intArgs);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+    else if (0 != strcmp(reply->str, "OK"))
+    {
+        return 0; // Failure.
+    }
+
+    freeReplyObject(reply);
+
+    return 1; // Success.
+}
+
+
 // Redis SET command:
 int redisCommand_SET(const char* key, const char* value)
 {
@@ -479,11 +528,18 @@ int redisCommand_SET(const char* key, const char* value)
 
 
 // Redis RPUSH command with integer value:
-int redisCommand_RPUSH_INT(const char* key, long long value, int* result)
+int redisCommand_RPUSH_INT(const char* key, long long values[], long long value_count, int* result)
 {
     redisReply* reply;
     const char* strArgs[] = { key };
-    long long intArgs[] = { value };
+    long long intArgs[value_count + 1];
+    long long i;
+
+    intArgs[0] = value_count;
+    for (i = 0; i < value_count; ++i)
+    {
+        intArgs[i + 1] = values[i];
+    }
 
     reply = execRedisCommand(REDIS_CMD_RPUSH_INT, strArgs, intArgs);
     if (!reply)

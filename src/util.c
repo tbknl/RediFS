@@ -153,12 +153,20 @@ int checkFileSystemExists()
 int createFileSystem()
 {
     int redisResult;
+    long long args[7];
     char key[1024];
     int result;
 
     snprintf(key, 1024, "%s::info:0", g_settings->name);
 
-    redisResult = redisCommand_RPUSH_INT(key, S_IFDIR | 0755, &result);
+    args[0] = S_IFDIR | 0755;
+    args[1] = 0; // TODO: UID.
+    args[2] = 0; // TODO: GID.
+    args[3] = 1; // TODO: Access time sec.
+    args[4] = 1; // TODO: Access time nsec.
+    args[5] = 1; // TODO: Modification time sec.
+    args[6] = 1; // TODO: Modification time nsec.
+    redisResult = redisCommand_RPUSH_INT(key, args, 7, &result);
     if (!redisResult)
     {
         return -EIO;
