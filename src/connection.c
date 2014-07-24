@@ -13,6 +13,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 #include <hiredis/hiredis.h>
 
 #include "connection.h"
@@ -23,6 +24,10 @@ struct redis_connection_info
     const char* host;
     redifs_port_t port;
 };
+
+
+// ---- Shared globals:
+char scripts[NUM_SCRIPTS][MAX_SCRIPTHASH_LEN];
 
 
 // ---- Redis globals:
@@ -113,14 +118,14 @@ enum {
 };
 
 static struct command_format commandFormats[] = {
-    /* HGET      */ { "HGET",   2, { ARG_STR, ARG_STR }, 2, { REDIS_REPLY_STRING, REDIS_REPLY_NIL } },
-    /* HKEYS     */ { "HKEYS",  1, { ARG_STR },          2, { REDIS_REPLY_ARRAY, REDIS_REPLY_NIL } },
-    /* HSET_INT  */ { "HSET",   3, { ARG_STR, ARG_STR, ARG_INT }, 1, { REDIS_REPLY_INTEGER } },
-    /* INCR      */ { "INCR",   1, { ARG_STR },          1, { REDIS_REPLY_INTEGER } },
-    /* LINDEX    */ { "LINDEX", 2, { ARG_STR, ARG_INT }, 2, { REDIS_REPLY_STRING, REDIS_REPLY_NIL } },
-    /* LSET_INT  */ { "LSET",   3, { ARG_STR, ARG_INT, ARG_INT }, 1, { REDIS_REPLY_STATUS } },
-    /* SET       */ { "SET",    2, { ARG_STR, ARG_STR }, 1, { REDIS_REPLY_STATUS } },
-    /* RPUSH_INT */ { "RPUSH",  2, { ARG_STR, ARG_INTS }, 1, { REDIS_REPLY_INTEGER } },
+    /* HGET      */ { "HGET",    2, { ARG_STR, ARG_STR }, 2, { REDIS_REPLY_STRING, REDIS_REPLY_NIL } },
+    /* HKEYS     */ { "HKEYS",   1, { ARG_STR },          2, { REDIS_REPLY_ARRAY, REDIS_REPLY_NIL } },
+    /* HSET_INT  */ { "HSET",    3, { ARG_STR, ARG_STR, ARG_INT }, 1, { REDIS_REPLY_INTEGER } },
+    /* INCR      */ { "INCR",    1, { ARG_STR },          1, { REDIS_REPLY_INTEGER } },
+    /* LINDEX    */ { "LINDEX",  2, { ARG_STR, ARG_INT }, 2, { REDIS_REPLY_STRING, REDIS_REPLY_NIL } },
+    /* LSET_INT  */ { "LSET",    3, { ARG_STR, ARG_INT, ARG_INT }, 1, { REDIS_REPLY_STATUS } },
+    /* SET       */ { "SET",     2, { ARG_STR, ARG_STR }, 1, { REDIS_REPLY_STATUS } },
+    /* RPUSH_INT */ { "RPUSH",   2, { ARG_STR, ARG_INTS }, 1, { REDIS_REPLY_INTEGER } },
 };
 
 
@@ -161,12 +166,15 @@ static char* redifs_lltoa(long long ll, char* a, int len)
 }
 
 
-static int handleStringReply(redisReply* reply, char** result)
+static int handleStringReply(redisReply* reply, char** result, int* len)
 {
     switch (reply->type)
     {
         case REDIS_REPLY_STRING:
             *result = reply->str;
+			if (len != NULL) {
+				*len = reply->len;
+			}
             return getReplyHandle(reply); // Success.
 
         case REDIS_REPLY_NIL:
@@ -193,6 +201,26 @@ static int handleStringArrayReply(redisReply* reply, int* result)
             return 1; // Success.
 
         default:
+            assert(0);
+            return 0; // Failure.
+    }
+}
+
+
+static int handleIntegerReply(redisReply* reply, long long* result)
+{
+    switch (reply->type)
+    {
+        case REDIS_REPLY_INTEGER:
+            *result = reply->integer;
+            return getReplyHandle(reply); // Success.
+
+        case REDIS_REPLY_STRING:
+            *result = atoll(reply->str); // TODO: What if string does not contain an integer?
+            return getReplyHandle(reply); // Success.
+
+        default:
+			fprintf(stderr, "Expected integer reply, got %d\n", reply->type);
             assert(0);
             return 0; // Failure.
     }
@@ -262,6 +290,63 @@ void closeRedisConnection()
 {
     redisFree(redis1);
     redis1 = NULL;
+}
+
+
+// Execute a Redis command:
+redisReply* execRedisCommand2(int numArgs, const char* args[])
+{
+    redisReply* reply;
+	int retries;
+
+    // Check for Redis server connection:
+    if (!redis1)
+    {
+        if (0 > connectToRedisServer())
+        {
+            fprintf(stderr, "Error: No connection to the Redis server.\n");
+            return NULL;
+        }
+    }
+
+    // Perform Redis command:
+    retries = 2;
+    while (1)
+    {
+        reply = redisCommandArgv(redis1, numArgs, args, NULL);
+        if (!reply)
+        {
+            // Try to reconnect:
+            if (redis1->err == REDIS_ERR_EOF && retries > 1)
+            {
+                closeRedisConnection();
+                if (--retries > 0)
+                {
+                    fprintf(stderr, "Connection to Redis server lost. Trying to reconnect...\n");
+                    if (0 == connectToRedisServer())
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        return NULL;
+                    }
+                }
+            }
+
+            fprintf(stderr, "XY Error: %s %d\n", redis1->errstr, redis1->err);
+            return NULL; // Failure.
+        }
+        else if (reply->type == REDIS_REPLY_ERROR)
+        {
+            fprintf(stderr, "Error: %s\n", redis1->errstr);
+            return NULL; // Failure.
+        }
+
+        break;
+    }
+
+    return reply; // Success.
 }
 
 
@@ -389,18 +474,18 @@ redisReply* execRedisCommand(int cmd, const char* strArgs[], long long intArgs[]
 // ---- Redis command implementations:
 
 // Redis HGET command:
-int redisCommand_HGET(const char* key, const char* field, char** result)
+int redisCommand_HGET(const char* key, const char* field, char** result, int* len)
 {
     redisReply* reply;
-    const char* args[] = { key, field };
+    const char* args[] = { "HGET", key, field };
 
-    reply = execRedisCommand(REDIS_CMD_HGET, args, NULL);
+    reply = execRedisCommand2(3, args);
     if (!reply)
     {
         return 0; // Failure.
     }
 
-    return handleStringReply(reply, result);
+    return handleStringReply(reply, result, len);
 }
 
 
@@ -478,7 +563,7 @@ int redisCommand_LINDEX(const char* key, long long index, char** result)
         return 0; // Failure.
     }
 
-    return handleStringReply(reply, result);
+    return handleStringReply(reply, result, NULL);
 }
 
 
@@ -558,3 +643,116 @@ int redisCommand_RPUSH_INT(const char* key, long long values[], long long value_
 }
 
 
+int loadScripts() {
+	const struct { const char* key; int id; } scriptDefs[] = {
+		{"getattr", SCRIPT_CHECK}, // TODO!
+		{"getattr", SCRIPT_GETATTR},
+		{"dir_read", SCRIPT_READDIR},
+		{"file_open", SCRIPT_FILEOPEN},
+		{"fileid_read_chunk", SCRIPT_FILEIDREADCHUNK},
+	}; 
+    int handle;
+    char* scriptHash;
+	int len;
+	const char* scriptsKey = "scripts";
+	int i = 0;
+
+    for (i = 0; i < NUM_SCRIPTS; ++i) {
+        handle = redisCommand_HGET(scriptsKey, scriptDefs[i].key, &scriptHash, &len);
+        if (!handle)
+        {
+            return -EIO;
+        }
+
+        if (!scriptHash)
+        {
+            releaseReplyHandle(handle);
+            return -ENOENT;
+        }
+
+		if (len < MAX_SCRIPTHASH_LEN) {
+			strcpy(scripts[scriptDefs[i].id], scriptHash);
+		}
+		else {
+			fprintf(stderr, "Unexpected script hash length %d\n", len);
+			return -3456; // TODO: Correct error ode.
+		}
+
+        releaseReplyHandle(handle);
+    }
+
+    for (i = 0; i < NUM_SCRIPTS; ++i) {
+        fprintf(stderr, "Loaded hash for %d: %s\n", i, scripts[i]);
+	}
+
+    return 0; // Success.
+}
+
+
+// Redis SCRIPT GETATTR:
+int redisCommand_SCRIPT_GETATTR(const char* path, int* result)
+{
+    redisReply* reply;
+    const char* args[] = { "EVALSHA", scripts[SCRIPT_GETATTR], "0", path };
+
+    reply = execRedisCommand2(4, args);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+
+    return handleStringArrayReply(reply, result);
+}
+
+
+// Redis SCRIPT READDIR:
+int redisCommand_SCRIPT_READDIR(const char* path, int* result)
+{
+    redisReply* reply;
+    const char* args[] = { "EVALSHA", scripts[SCRIPT_READDIR], "0", path };
+
+    reply = execRedisCommand2(4, args);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+
+    return handleStringArrayReply(reply, result);
+}
+
+
+// Redis SCRIPT FILEOPEN:
+int redisCommand_SCRIPT_FILEOPEN(const char* path, long long* result)
+{
+    redisReply* reply;
+    const char* args[] = { "EVALSHA", scripts[SCRIPT_FILEOPEN], "0", path };
+
+    reply = execRedisCommand2(4, args);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+
+    return handleIntegerReply(reply, result);
+}
+
+
+int redisCommand_SCRIPT_FILEREADCHUNK(long long nodeId, int offset, int size, char** result, int* len)
+{
+    redisReply* reply;
+	char nodeId_str[64];
+	char offset_str[64];
+	char size_str[64];
+    const char* args[] = { "EVALSHA", scripts[SCRIPT_FILEIDREADCHUNK], "0", nodeId_str, offset_str, size_str };
+	snprintf(nodeId_str, sizeof(nodeId_str), "%lld", nodeId);
+	snprintf(offset_str, sizeof(offset_str), "%d", offset);
+	snprintf(size_str, sizeof(size_str), "%d", size);
+
+    reply = execRedisCommand2(6, args);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+
+    return handleStringReply(reply, result, len);
+}

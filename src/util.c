@@ -102,7 +102,7 @@ node_id_t retrievePathNodeId(const char* path)
         }
 
         snprintf(key, 1024, "%s::node:%lld", g_settings->name, curNodeId);
-        handle = redisCommand_HGET(key, curDir, &curNodeIdStr);
+        handle = redisCommand_HGET(key, curDir, &curNodeIdStr, NULL);
         if (!handle)
         {
             free(lpath);

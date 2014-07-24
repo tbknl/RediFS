@@ -54,6 +54,9 @@ int main(int argc, char* argv[])
         exit(1);
     }
 
+	// TODO: Handle filesystem name as cli argument. Set default FS name.
+
+	/* TODO
     // Check whether a FS exists:
     result = checkFileSystemExists();
     if (result == 0)
@@ -92,6 +95,14 @@ int main(int argc, char* argv[])
         fprintf(stderr, "Error: Unexpected error occurred: %d.\n", -result);
         exit(1);
     }
+	*/
+
+	// Load the scripts table:
+	if (0 > loadScripts()) {
+        fprintf(stderr, "Error: Could not load scripts.\n");
+		exit(1);
+	}
+	//exit(2);
 
     // Start FUSE main:
     result = fuse_main(args.argc, args.argv, &redifs_oper, NULL);
