@@ -140,6 +140,21 @@ def load_scripts():
 	""")
 
 
+	## Read file chunk by file id:
+	script_sha['fileid_write_chunk'] = rc.script_load("""
+		local fileid = ARGV[1]
+		if fileid == false then return false end
+		if redis.call('hget', 'node:' .. fileid, 'type') ~= 'file' then return false end
+		if ARGV[2] ~= nil and ARGV[3] ~= nil then
+			local offset = ARGV[2]
+			local data = ARGV[3]
+			redis.call('setrange', 'node:' .. fileid .. ':data', offset, data)
+			return 1
+		end
+		return 0
+	""")
+
+
 	# Write script ids:
 	rc.hmset('scripts', script_sha)
 

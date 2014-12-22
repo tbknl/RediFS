@@ -15,12 +15,13 @@
 #include "redifs_types.h"
 
 enum {
-	SCRIPT_CHECK = 0,
-	SCRIPT_GETATTR,
-	SCRIPT_READDIR,
-	SCRIPT_FILEOPEN,
-	SCRIPT_FILEIDREADCHUNK,
-	NUM_SCRIPTS
+    SCRIPT_CHECK = 0,
+    SCRIPT_GETATTR,
+    SCRIPT_READDIR,
+    SCRIPT_FILEOPEN,
+    SCRIPT_FILEIDREADCHUNK,
+    SCRIPT_FILEIDWRITECHUNK,
+    NUM_SCRIPTS
 };
 #define MAX_SCRIPTHASH_LEN 64
 extern char scripts[NUM_SCRIPTS][MAX_SCRIPTHASH_LEN];
@@ -52,7 +53,8 @@ extern int redisCommand_RPUSH_INT(const char* key, long long values[], long long
 extern int redisCommand_SCRIPT_GETATTR(const char* path, int* result);
 extern int redisCommand_SCRIPT_READDIR(const char* path, int* result);
 extern int redisCommand_SCRIPT_FILEOPEN(const char* path, long long* result);
-extern int redisCommand_SCRIPT_FILEREADCHUNK(long long nodeId, int offset, int size, char** result, int* len);
+extern int redisCommand_SCRIPT_FILEIDREADCHUNK(long long nodeId, int offset, int size, char** result, int* len);
+extern int redisCommand_SCRIPT_FILEIDWRITECHUNK(long long nodeId, int offset, int size, const char* buf);
 
 
 #endif // _CONNECTION_H_

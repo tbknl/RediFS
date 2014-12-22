@@ -56,43 +56,43 @@ enum
 /* ---- getattr ---- */
 int redifs_getattr(const char* path, struct stat* stbuf)
 {
-	memset(stbuf, 0, sizeof(struct stat));
-	/*
-	stbuf->st_uid = getuid();
-	stbuf->st_gid = getgid();
-	stbuf->st_mode = S_IFDIR | 0755;
-	stbuf->st_nlink = 2;
-	//stbuf->st_size = 4096;
-	return 0;
-	//*/
+    memset(stbuf, 0, sizeof(struct stat));
+    /*
+    stbuf->st_uid = getuid();
+    stbuf->st_gid = getgid();
+    stbuf->st_mode = S_IFDIR | 0755;
+    stbuf->st_nlink = 2;
+    //stbuf->st_size = 4096;
+    return 0;
+    //*/
 
-	int handle;
-	int numResults;
+    int handle;
+    int numResults;
 
-	mode_t mode;
-	off_t size;
-	const char* type;
+    mode_t mode;
+    off_t size;
+    const char* type;
 
-	handle = redisCommand_SCRIPT_GETATTR(path, &numResults);
+    handle = redisCommand_SCRIPT_GETATTR(path, &numResults);
     if (!handle)
     {
         return -EIO;
     }
 
-	if (numResults == 3) {
-		char* entries[3];
-		retrieveStringArrayElements(handle, 0, numResults, entries);
-		type = entries[0];
-		mode = atoll(entries[1]);
-		size = atoll(entries[2]);
-		mode = 0755;
-	}
-	else {
-		return -1234; // TODO: Return correct code for invalid data.
-	}
+    if (numResults == 3) {
+        char* entries[3];
+        retrieveStringArrayElements(handle, 0, numResults, entries);
+        type = entries[0];
+        mode = atoll(entries[1]);
+        size = atoll(entries[2]);
+        mode = 0755;
+    }
+    else {
+        return -1234; // TODO: Return correct code for invalid data.
+    }
 
-	stbuf->st_uid = getuid();
-	stbuf->st_gid = getgid();
+    stbuf->st_uid = getuid();
+    stbuf->st_gid = getgid();
 
     if (0 == strcmp(type, "dir"))
     {
@@ -263,7 +263,7 @@ int redifs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
 
-	fprintf(stderr, "readdir result count %d\n", result);
+    fprintf(stderr, "readdir result count %d\n", result);
     if (result > 0)
     {
         char* entries[result];
@@ -271,7 +271,7 @@ int redifs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
         for (i = 0; i < result; ++i)
         {
             filler(buf, entries[i], NULL, 0);
-			fprintf(stderr, "readdir result %d %s\n", i, entries[i]);
+            fprintf(stderr, "readdir result %d %s\n", i, entries[i]);
         }
     }
 
@@ -392,7 +392,7 @@ int redifs_utimens(const char* path, const struct timespec tv[2])
 /* ---- open ---- */
 int redifs_open(const char* path, struct fuse_file_info* fileInfo)
 {
-	/*
+    /*
     if (0 != strcmp(path, "/bla"))
     {
         return -ENOENT;
@@ -404,7 +404,7 @@ int redifs_open(const char* path, struct fuse_file_info* fileInfo)
     }
 
     return 0;
-	//*/
+    //*/
 
     long long result;
     int handle;
@@ -415,16 +415,16 @@ int redifs_open(const char* path, struct fuse_file_info* fileInfo)
         return -EIO;
     }
 
-	if (result < 0) {
-		return result; // Returned error.
-	}
-	else if (result == 0) {
-		return -EIO; // Unexpected result.
-	}
+    if (result < 0) {
+        return result; // Returned error.
+    }
+    else if (result == 0) {
+        return -EIO; // Unexpected result.
+    }
 
-	// NOTE: A result > 0 indicates a file node id.
-	
-	fileInfo->fh = result;
+    // NOTE: A result > 0 indicates a file node id.
+    
+    fileInfo->fh = result;
 
     releaseReplyHandle(handle);
 
@@ -436,22 +436,41 @@ int redifs_open(const char* path, struct fuse_file_info* fileInfo)
 int redifs_read(const char* path, char* buf, size_t size, off_t offset,
                        struct fuse_file_info* fileInfo)
 {
-	long long nodeId = fileInfo->fh;
-	char* result;
-	int len;
-	int handle;
+    long long nodeId = fileInfo->fh;
+    char* result;
+    int len;
+    int handle;
 
-    handle = redisCommand_SCRIPT_FILEREADCHUNK(nodeId, offset, size, &result, &len);
+    handle = redisCommand_SCRIPT_FILEIDREADCHUNK(nodeId, offset, size, &result, &len);
     if (!handle)
     {
         return -EIO;
     }
 
-	memcpy(buf, result, len);
+    memcpy(buf, result, len);
 
     releaseReplyHandle(handle);
 
     return len;
+}
+
+
+/* ---- write ---- */
+int redifs_write(const char* path, const char* buf, size_t size, off_t offset,
+                       struct fuse_file_info* fileInfo)
+{
+    long long nodeId = fileInfo->fh;
+    int handle;
+
+    handle = redisCommand_SCRIPT_FILEIDWRITECHUNK(nodeId, offset, size, buf);
+    if (!handle)
+    {
+        return -EIO;
+    }
+
+    releaseReplyHandle(handle);
+
+    return size;
 }
 
 
@@ -466,6 +485,7 @@ struct fuse_operations redifs_oper = {
     //.utimens = redifs_utimens,
     .open = redifs_open,
     .read = redifs_read,
+    .write = redifs_write,
 };
 
 

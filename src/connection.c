@@ -12,6 +12,7 @@
 // ---- Includes:
 #include <assert.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <hiredis/hiredis.h>
@@ -172,9 +173,9 @@ static int handleStringReply(redisReply* reply, char** result, int* len)
     {
         case REDIS_REPLY_STRING:
             *result = reply->str;
-			if (len != NULL) {
-				*len = reply->len;
-			}
+            if (len != NULL) {
+                *len = reply->len;
+            }
             return getReplyHandle(reply); // Success.
 
         case REDIS_REPLY_NIL:
@@ -220,7 +221,7 @@ static int handleIntegerReply(redisReply* reply, long long* result)
             return getReplyHandle(reply); // Success.
 
         default:
-			fprintf(stderr, "Expected integer reply, got %d\n", reply->type);
+            fprintf(stderr, "Expected integer reply, got %d\n", reply->type);
             assert(0);
             return 0; // Failure.
     }
@@ -294,10 +295,11 @@ void closeRedisConnection()
 
 
 // Execute a Redis command:
-redisReply* execRedisCommand2(int numArgs, const char* args[])
+redisReply* execRedisCommand2(int numArgs, const char* args[], size_t* argvlen, const int* argiszt)
 {
     redisReply* reply;
-	int retries;
+    int retries;
+    int i;
 
     // Check for Redis server connection:
     if (!redis1)
@@ -309,11 +311,20 @@ redisReply* execRedisCommand2(int numArgs, const char* args[])
         }
     }
 
+    // Calculate arg lengths:
+    if (argvlen != NULL && argiszt != NULL) {
+        for (i = 0; i < numArgs; ++i) {
+            if (argiszt[i]) {
+                argvlen[i] = strlen(args[i]);
+            }
+        }
+    }
+
     // Perform Redis command:
     retries = 2;
     while (1)
     {
-        reply = redisCommandArgv(redis1, numArgs, args, NULL);
+        reply = redisCommandArgv(redis1, numArgs, args, argvlen);
         if (!reply)
         {
             // Try to reconnect:
@@ -479,7 +490,7 @@ int redisCommand_HGET(const char* key, const char* field, char** result, int* le
     redisReply* reply;
     const char* args[] = { "HGET", key, field };
 
-    reply = execRedisCommand2(3, args);
+    reply = execRedisCommand2(3, args, NULL, NULL);
     if (!reply)
     {
         return 0; // Failure.
@@ -644,18 +655,19 @@ int redisCommand_RPUSH_INT(const char* key, long long values[], long long value_
 
 
 int loadScripts() {
-	const struct { const char* key; int id; } scriptDefs[] = {
-		{"getattr", SCRIPT_CHECK}, // TODO!
-		{"getattr", SCRIPT_GETATTR},
-		{"dir_read", SCRIPT_READDIR},
-		{"file_open", SCRIPT_FILEOPEN},
-		{"fileid_read_chunk", SCRIPT_FILEIDREADCHUNK},
-	}; 
+    const struct { const char* key; int id; } scriptDefs[] = {
+        {"getattr", SCRIPT_CHECK}, // TODO!
+        {"getattr", SCRIPT_GETATTR},
+        {"dir_read", SCRIPT_READDIR},
+        {"file_open", SCRIPT_FILEOPEN},
+        {"fileid_read_chunk", SCRIPT_FILEIDREADCHUNK},
+        {"fileid_write_chunk", SCRIPT_FILEIDWRITECHUNK},
+    }; 
     int handle;
     char* scriptHash;
-	int len;
-	const char* scriptsKey = "scripts";
-	int i = 0;
+    int len;
+    const char* scriptsKey = "scripts";
+    int i = 0;
 
     for (i = 0; i < NUM_SCRIPTS; ++i) {
         handle = redisCommand_HGET(scriptsKey, scriptDefs[i].key, &scriptHash, &len);
@@ -670,20 +682,20 @@ int loadScripts() {
             return -ENOENT;
         }
 
-		if (len < MAX_SCRIPTHASH_LEN) {
-			strcpy(scripts[scriptDefs[i].id], scriptHash);
-		}
-		else {
-			fprintf(stderr, "Unexpected script hash length %d\n", len);
-			return -3456; // TODO: Correct error ode.
-		}
+        if (len < MAX_SCRIPTHASH_LEN) {
+            strcpy(scripts[scriptDefs[i].id], scriptHash);
+        }
+        else {
+            fprintf(stderr, "Unexpected script hash length %d\n", len);
+            return -3456; // TODO: Correct error ode.
+        }
 
         releaseReplyHandle(handle);
     }
 
     for (i = 0; i < NUM_SCRIPTS; ++i) {
         fprintf(stderr, "Loaded hash for %d: %s\n", i, scripts[i]);
-	}
+    }
 
     return 0; // Success.
 }
@@ -695,7 +707,7 @@ int redisCommand_SCRIPT_GETATTR(const char* path, int* result)
     redisReply* reply;
     const char* args[] = { "EVALSHA", scripts[SCRIPT_GETATTR], "0", path };
 
-    reply = execRedisCommand2(4, args);
+    reply = execRedisCommand2(4, args, NULL, NULL);
     if (!reply)
     {
         return 0; // Failure.
@@ -711,7 +723,7 @@ int redisCommand_SCRIPT_READDIR(const char* path, int* result)
     redisReply* reply;
     const char* args[] = { "EVALSHA", scripts[SCRIPT_READDIR], "0", path };
 
-    reply = execRedisCommand2(4, args);
+    reply = execRedisCommand2(4, args, NULL, NULL);
     if (!reply)
     {
         return 0; // Failure.
@@ -727,7 +739,7 @@ int redisCommand_SCRIPT_FILEOPEN(const char* path, long long* result)
     redisReply* reply;
     const char* args[] = { "EVALSHA", scripts[SCRIPT_FILEOPEN], "0", path };
 
-    reply = execRedisCommand2(4, args);
+    reply = execRedisCommand2(4, args, NULL, NULL);
     if (!reply)
     {
         return 0; // Failure.
@@ -737,18 +749,18 @@ int redisCommand_SCRIPT_FILEOPEN(const char* path, long long* result)
 }
 
 
-int redisCommand_SCRIPT_FILEREADCHUNK(long long nodeId, int offset, int size, char** result, int* len)
+int redisCommand_SCRIPT_FILEIDREADCHUNK(long long nodeId, int offset, int size, char** result, int* len)
 {
     redisReply* reply;
-	char nodeId_str[64];
-	char offset_str[64];
-	char size_str[64];
+    char nodeId_str[64];
+    char offset_str[64];
+    char size_str[64];
     const char* args[] = { "EVALSHA", scripts[SCRIPT_FILEIDREADCHUNK], "0", nodeId_str, offset_str, size_str };
-	snprintf(nodeId_str, sizeof(nodeId_str), "%lld", nodeId);
-	snprintf(offset_str, sizeof(offset_str), "%d", offset);
-	snprintf(size_str, sizeof(size_str), "%d", size);
+    snprintf(nodeId_str, sizeof(nodeId_str), "%lld", nodeId);
+    snprintf(offset_str, sizeof(offset_str), "%d", offset);
+    snprintf(size_str, sizeof(size_str), "%d", size);
 
-    reply = execRedisCommand2(6, args);
+    reply = execRedisCommand2(6, args, NULL, NULL);
     if (!reply)
     {
         return 0; // Failure.
@@ -756,3 +768,33 @@ int redisCommand_SCRIPT_FILEREADCHUNK(long long nodeId, int offset, int size, ch
 
     return handleStringReply(reply, result, len);
 }
+
+
+int redisCommand_SCRIPT_FILEIDWRITECHUNK(long long nodeId, int offset, int size, const char* buf)
+{
+    redisReply* reply;
+    char nodeId_str[64];
+    char offset_str[64];
+    int handle;
+    long long success;
+    size_t argvlen[6] = { 0, 0, 0, 0, 0, size };
+    int argiszt[6] = { 1, 1, 1, 1, 1, 0 }; // Zero-terminated args.
+    const char* args[] = { "EVALSHA", scripts[SCRIPT_FILEIDWRITECHUNK], "0", nodeId_str, offset_str, buf };
+
+    snprintf(nodeId_str, sizeof(nodeId_str), "%lld", nodeId);
+    snprintf(offset_str, sizeof(offset_str), "%d", offset);
+
+    reply = execRedisCommand2(6, args, argvlen, argiszt);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+
+    handle = handleIntegerReply(reply, &success);
+    if (!success) {
+        return 0; // Failure.
+    }
+    return handle;
+}
+
+
