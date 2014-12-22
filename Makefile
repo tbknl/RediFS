@@ -5,7 +5,7 @@ RM = rm
 LIBS = fuse hiredis
 
 LIB_FLAGS = $(addprefix -l,$(LIBS))
-CDEFINES = _FILE_OFFSET_BITS=64 FUSE_USE_VERSION=26
+CDEFINES = _FILE_OFFSET_BITS=64 FUSE_USE_VERSION=30
 CFLAGS = -g -Wall
 CFLAGS += $(addprefix -D,$(CDEFINES))
 
