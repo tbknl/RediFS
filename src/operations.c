@@ -24,6 +24,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/types.h>
+#include <linux/limits.h>
 
 #include "operations.h"
 #include "options.h"
@@ -32,7 +33,6 @@
 
 
 /* ---- Defines ---- */
-#define KEY_NODE_ID_CTR "node_id_ctr"
 
 enum
 {
@@ -88,7 +88,8 @@ int redifs_getattr(const char* path, struct stat* stbuf)
         mode = 0755;
     }
     else {
-        return -1234; // TODO: Return correct code for invalid data.
+		// TODO!!! Can also be ENOTDIR.
+		return -ENOENT;
     }
 
     stbuf->st_uid = getuid();
@@ -182,67 +183,39 @@ int redifs_mknod(const char* path, mode_t mode, dev_t dev)
 /* ---- mkdir ---- */
 int redifs_mkdir(const char* path, mode_t mode)
 {
-    node_id_t nodeId;
-    node_id_t parentNodeId;
-    long long args[NODE_INFO_COUNT];
-    char* newDirName;
-    char key[1024];
-    char* lpath;
-    int redisResult;
+	char pathdup1[PATH_MAX];
+	char pathdup2[PATH_MAX];
+	char* parent_path;
+	char* name;
+    long long result;
+    int handle;
 
-    // Create a new node ID:
-    nodeId = createUniqueNodeId();
-    if (nodeId == 0)
-    {
-        fprintf(stderr, "Error: Run out of node IDs.\n");
-        return -ENOSPC;
-    }
-    else if (nodeId < 0)
-    {
-        return nodeId;
-    }
+	strcpy(pathdup1, path);
+	strcpy(pathdup2, path);
+	parent_path = dirname(pathdup1);
+	name = basename(pathdup2);
 
-    // Create node info:
-    snprintf(key, 1024, "%s::info:%lld", g_settings->name, nodeId);
-    args[NODE_INFO_MODE] = mode | S_IFDIR;
-    args[NODE_INFO_UID] = 0; // TODO: UID.
-    args[NODE_INFO_GID] = 0; // TODO: GID.
-    args[NODE_INFO_ACCESS_TIME_SEC] = 1; // TODO. 
-    args[NODE_INFO_ACCESS_TIME_NSEC] = 1; // TODO. 
-    args[NODE_INFO_MOD_TIME_SEC] = 1; // TODO. 
-    args[NODE_INFO_MOD_TIME_NSEC] = 1; // TODO. 
-    redisResult = redisCommand_RPUSH_INT(key, args, NODE_INFO_COUNT, NULL);
-    if (!redisResult)
+    handle = redisCommand_SCRIPT_DIRCREATE(parent_path, name, &result);
+    if (!handle)
     {
         return -EIO;
     }
 
-    // Determine name of new directory:
-    lpath = strdup(path);
-    newDirName = strdup(basename(lpath));
-    free(lpath);
-
-    // Determine parent dir node ID:
-    lpath = strdup(path);
-    parentNodeId = retrievePathNodeId(dirname(lpath));
-    free(lpath);
-    if (parentNodeId < 0)
-    {
-        return -ENOENT;
+    if (result <= 0) {
+        return -EIO; // Unexpected result.
     }
 
-    // Execute Redis command:
-    snprintf(key, 1024, "%s::node:%lld", g_settings->name, parentNodeId);
-    redisResult = redisCommand_HSET_INT(key, newDirName, nodeId, NULL);
+    releaseReplyHandle(handle);
+	return 0;
 
-    free(newDirName);
-
-    if (!redisResult)
-    {
-        return -EIO;
-    }
-
-    return 0;
+	// TODO?
+    /*args[NODE_INFO_MODE] = mode | S_IFDIR;*/
+    /*args[NODE_INFO_UID] = 0; // TODO: UID.*/
+    /*args[NODE_INFO_GID] = 0; // TODO: GID.*/
+    /*args[NODE_INFO_ACCESS_TIME_SEC] = 1; // TODO. */
+    /*args[NODE_INFO_ACCESS_TIME_NSEC] = 1; // TODO. */
+    /*args[NODE_INFO_MOD_TIME_SEC] = 1; // TODO. */
+    /*args[NODE_INFO_MOD_TIME_NSEC] = 1; // TODO. */
 }
 
 
@@ -478,7 +451,7 @@ int redifs_write(const char* path, const char* buf, size_t size, off_t offset,
 struct fuse_operations redifs_oper = {
     .getattr = redifs_getattr,
     //.mknod = redifs_mknod,
-    //.mkdir = redifs_mkdir,
+    .mkdir = redifs_mkdir,
     .readdir = redifs_readdir,
     //.chmod = redifs_chmod,
     //.chown = redifs_chown,
