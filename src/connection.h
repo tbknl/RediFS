@@ -22,6 +22,7 @@ enum {
     SCRIPT_FILEIDREADCHUNK,
     SCRIPT_FILEIDWRITECHUNK,
 	SCRIPT_DIRCREATE,
+	SCRIPT_FILECREATE,
     NUM_SCRIPTS
 };
 #define MAX_SCRIPTHASH_LEN 64
@@ -57,6 +58,7 @@ extern int redisCommand_SCRIPT_FILEOPEN(const char* path, long long* result);
 extern int redisCommand_SCRIPT_FILEIDREADCHUNK(long long nodeId, int offset, int size, char** result, int* len);
 extern int redisCommand_SCRIPT_FILEIDWRITECHUNK(long long nodeId, int offset, int size, const char* buf);
 extern int redisCommand_SCRIPT_DIRCREATE(const char* path, const char* name, long long* result);
+extern int redisCommand_SCRIPT_FILECREATE(const char* path, const char* name, long long* result);
 
 
 #endif // _CONNECTION_H_
