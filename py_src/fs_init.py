@@ -155,6 +155,26 @@ def load_scripts():
 	""")
 
 
+	## Truncate file:
+	script_sha['file_truncate'] = rc.script_load(
+		helpers['findNodeId'] + """
+		local fileid = findNodeId(ARGV[1])
+		if fileid == false then return false end
+		if redis.call('hget', 'node:' .. fileid, 'type') ~= 'file' then return false end
+		local oldlen = redis.call('strlen', 'node:' .. fileid ..':data')
+		local newlen = tonumber(ARGV[2])
+		if newlen > oldlen then
+			redis.call('setbit', 'node:'.. fileid ..':data', (newlen - 1) * 8, 0)
+		elseif newlen == 0 then
+			redis.call('set', 'node:'.. fileid ..':data', '')
+		elseif newlen < oldlen then
+			local newvalue = redis.call('getrange', 'node:'.. fileid .. ':data', 0, newlen - 1)
+			redis.call('set', 'node:'.. fileid ..':data', newvalue)
+		end
+		return 1
+	""")
+
+
 	# Write script ids:
 	rc.hmset('scripts', script_sha)
 

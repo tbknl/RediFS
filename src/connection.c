@@ -664,6 +664,7 @@ int loadScripts() {
         {"fileid_write_chunk", SCRIPT_FILEIDWRITECHUNK},
         {"dir_create", SCRIPT_DIRCREATE},
         {"file_create", SCRIPT_FILECREATE},
+        {"file_truncate", SCRIPT_FILETRUNCATE},
     }; 
     int handle;
     char* scriptHash;
@@ -821,6 +822,25 @@ int redisCommand_SCRIPT_FILECREATE(const char* path, const char* name, long long
 {
     redisReply* reply;
     const char* args[] = { "EVALSHA", scripts[SCRIPT_FILECREATE], "0", path, name };
+
+    reply = execRedisCommand2(5, args, NULL, NULL);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+
+    return handleIntegerReply(reply, result);
+}
+
+
+// Redis SCRIPT FILETRUNCATE:
+int redisCommand_SCRIPT_FILETRUNCATE(const char* path, long long length, long long* result)
+{
+    redisReply* reply;
+    char length_str[64];
+    const char* args[] = { "EVALSHA", scripts[SCRIPT_FILETRUNCATE], "0", path, length_str };
+
+    snprintf(length_str, sizeof(length_str), "%lld", length);
 
     reply = execRedisCommand2(5, args, NULL, NULL);
     if (!reply)

@@ -421,6 +421,28 @@ int redifs_write(const char* path, const char* buf, size_t size, off_t offset,
 }
 
 
+/* ---- truncate ---- */
+int redifs_truncate(const char* path, off_t offset)
+{
+    int handle;
+	long long result;
+
+    handle = redisCommand_SCRIPT_FILETRUNCATE(path, offset, &result);
+    if (!handle)
+    {
+        return -EIO;
+    }
+
+    if (result <= 0) {
+        return -EIO; // Unexpected result.
+    }
+
+    releaseReplyHandle(handle);
+
+    return 0;
+}
+
+
 /* ---- redifs fuse operations ---- */
 struct fuse_operations redifs_oper = {
     .getattr = redifs_getattr,
@@ -433,6 +455,7 @@ struct fuse_operations redifs_oper = {
     .open = redifs_open,
     .read = redifs_read,
     .write = redifs_write,
+	.truncate = redifs_truncate,
 };
 
 
