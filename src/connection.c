@@ -666,6 +666,7 @@ int loadScripts() {
         {"file_create", SCRIPT_FILECREATE},
         {"file_truncate", SCRIPT_FILETRUNCATE},
         {"unlink", SCRIPT_UNLINK},
+        {"link", SCRIPT_LINK},
     }; 
     int handle;
     char* scriptHash;
@@ -860,6 +861,21 @@ int redisCommand_SCRIPT_UNLINK(const char* path, long long* result)
     const char* args[] = { "EVALSHA", scripts[SCRIPT_UNLINK], "0", path };
 
     reply = execRedisCommand2(4, args, NULL, NULL);
+    if (!reply)
+    {
+        return 0; // Failure.
+    }
+
+    return handleIntegerReply(reply, result);
+}
+
+
+// Redis SCRIPT LINK:
+int redisCommand_SCRIPT_LINK(const char* from_path, const char* to_path, long long* result) {
+    redisReply* reply;
+    const char* args[] = { "EVALSHA", scripts[SCRIPT_LINK], "0", from_path, to_path };
+
+    reply = execRedisCommand2(5, args, NULL, NULL);
     if (!reply)
     {
         return 0; // Failure.

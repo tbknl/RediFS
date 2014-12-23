@@ -40,7 +40,7 @@ def load_scripts():
 				basename = d
 				parentid = dirid
 				dirid = redis.call('hget', 'node:' .. dirid .. ':entries', d)
-				if dirid == false then return false end
+				if dirid == false then break end
 			end
 			return {{id=dirid, parentid=parentid, basename=basename}}
 		end
@@ -202,6 +202,21 @@ def load_scripts():
 		if redis.call('hincrby', 'node:' .. file.id, 'ref', -1) <= 0 then
 			redis.call('del', 'node:'.. file.id, 'node:'.. file.id ..':data')
 		end
+		return 1
+	""")
+
+
+	## Link:
+	script_sha['link'] = rc.script_load(
+		helpers['findNodeId'] + helpers['findNodeIdExt'] + """
+		local fileid = findNodeId(ARGV[1])
+		if fileid == false then return false end
+		local destfile = findNodeIdExt(ARGV[2])
+		if destfile.id ~= false then return -1 end
+		if destfile.parentid == false then return -2 end
+		if redis.call('hget', 'node:' .. destfile.parentid, 'type') ~= 'dir' then return -3 end
+		redis.call('hset', 'node:'.. destfile.parentid ..':entries', destfile.basename, fileid)
+		redis.call('hincrby', 'node:'.. fileid, 'ref', 1)
 		return 1
 	""")
 

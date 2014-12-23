@@ -465,6 +465,31 @@ int redifs_unlink(const char* path)
 }
 
 
+/* ---- link ---- */
+int redifs_link(const char* from_path, const char* to_path)
+{
+    int handle;
+	long long result;
+
+    handle = redisCommand_SCRIPT_LINK(from_path, to_path, &result);
+    if (!handle)
+    {
+        return -EIO;
+    }
+
+    if (result <= 0) {
+		// TODO: Result -1 means: destination file already exists.
+		// TODO: Result -2 means: destination directory does not exist.
+		// TODO: Result -3 means: destination directory is not a directory.
+        return -EIO; // Unexpected result.
+    }
+
+    releaseReplyHandle(handle);
+
+    return 0;
+}
+
+
 /* ---- redifs fuse operations ---- */
 struct fuse_operations redifs_oper = {
     .getattr = redifs_getattr,
@@ -479,6 +504,7 @@ struct fuse_operations redifs_oper = {
     .write = redifs_write,
 	.truncate = redifs_truncate,
 	.unlink = redifs_unlink,
+	.link = redifs_link,
 };
 
 
