@@ -28,28 +28,10 @@
 
 #include "operations.h"
 #include "options.h"
-#include "util.h"
 #include "connection.h"
 
 
 /* ---- Defines ---- */
-
-enum
-{
-    NODE_INFO_MODE = 0,
-    NODE_INFO_UID,
-    NODE_INFO_GID,
-    NODE_INFO_ACCESS_TIME_SEC,
-    NODE_INFO_ACCESS_TIME_NSEC,
-    NODE_INFO_MOD_TIME_SEC,
-    NODE_INFO_MOD_TIME_NSEC,
-    NODE_INFO_COUNT
-};
-
-
-/* ---- Macros ---- */
-#define CLEAR_STRUCT(ptr, type) memset(ptr, 0, sizeof(type));
-
 
 /* ================ FUSE operations ================ */
 
@@ -228,67 +210,7 @@ int redifs_readdir(const char* path, void* buf, fuse_fill_dir_t filler,
 }
 
 
-// ---- chmod:
-int redifs_chmod(const char* path, mode_t mode)
-{
-    char key[1024];
-    node_id_t nodeId;
-    int redisResult;
-
-    // Retrieve the node ID:
-    nodeId = retrievePathNodeId(path);
-    if (nodeId < 0)
-    {
-        return -ENOENT;
-    }
-
-    // Update node info:
-    snprintf(key, 1024, "%s::info:%lld", g_settings->name, nodeId);
-    redisResult = redisCommand_LSET_INT(key, NODE_INFO_MODE, mode | S_IFDIR);
-    if (!redisResult)
-    {
-        return -EIO;
-    }
-
-    return 0; // Success.
-}
-
-
-// ---- chown:
-int redifs_chown(const char* path, uid_t uid, gid_t gid)
-{
-    char key[1024];
-    node_id_t nodeId;
-    int redisResult;
-
-    // Retrieve the node ID:
-    nodeId = retrievePathNodeId(path);
-    if (nodeId < 0)
-    {
-        return -ENOENT;
-    }
-
-    snprintf(key, 1024, "%s::info:%lld", g_settings->name, nodeId);
-
-    // Update UID:
-    redisResult = redisCommand_LSET_INT(key, NODE_INFO_UID, uid);
-    if (!redisResult)
-    {
-        return -EIO;
-    }
-
-    // Update GID:
-    redisResult = redisCommand_LSET_INT(key, NODE_INFO_GID, gid);
-    if (!redisResult)
-    {
-        return -EIO;
-    }
-
-    return 0; // Success.
-}
-
-
-// ---- utimens:
+/*
 int redifs_utimens(const char* path, const struct timespec tv[2])
 {
     char key[1024];
@@ -334,6 +256,7 @@ int redifs_utimens(const char* path, const struct timespec tv[2])
 
     return 0; // Success.
 }
+*/
 
 
 /* ---- open ---- */

@@ -19,7 +19,6 @@
 #include <libgen.h>
 #include <errno.h>
 
-#include "util.h"
 #include "options.h"
 #include "connection.h"
 #include "operations.h"
