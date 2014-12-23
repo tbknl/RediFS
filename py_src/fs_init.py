@@ -30,6 +30,23 @@ def load_scripts():
 		end
 	""".format(rootDirId=fsdata['rootDirId'])
 
+	## Find parent node id:
+	helpers['findNodeIdExt'] = """
+		local function findNodeIdExt(path)
+			local dirid = {rootDirId}
+			local parentid = 0
+			local basename = path
+			for d in string.gmatch(path, '[^\/]+') do
+				basename = d
+				parentid = dirid
+				dirid = redis.call('hget', 'node:' .. dirid .. ':entries', d)
+				if dirid == false then return false end
+			end
+			return {{id=dirid, parentid=parentid, basename=basename}}
+		end
+	""".format(rootDirId=fsdata['rootDirId'])
+
+
 	# Scripts
 	script_sha = {}
 
@@ -170,6 +187,20 @@ def load_scripts():
 		elseif newlen < oldlen then
 			local newvalue = redis.call('getrange', 'node:'.. fileid .. ':data', 0, newlen - 1)
 			redis.call('set', 'node:'.. fileid ..':data', newvalue)
+		end
+		return 1
+	""")
+
+
+	## Unlink:
+	script_sha['unlink'] = rc.script_load(
+		helpers['findNodeIdExt'] + """
+		local file = findNodeIdExt(ARGV[1])
+		if file.id == false then return false end
+		if redis.call('hget', 'node:' .. file.id, 'type') ~= 'file' then return false end
+		redis.call('hdel', 'node:' .. file.parentid .. ':entries', file.basename)
+		if redis.call('hincrby', 'node:' .. file.id, 'ref', -1) <= 0 then
+			redis.call('del', 'node:'.. file.id, 'node:'.. file.id ..':data')
 		end
 		return 1
 	""")

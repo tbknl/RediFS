@@ -443,6 +443,28 @@ int redifs_truncate(const char* path, off_t offset)
 }
 
 
+/* ---- unlink ---- */
+int redifs_unlink(const char* path)
+{
+    int handle;
+	long long result;
+
+    handle = redisCommand_SCRIPT_UNLINK(path, &result);
+    if (!handle)
+    {
+        return -EIO;
+    }
+
+    if (result <= 0) {
+        return -EIO; // Unexpected result.
+    }
+
+    releaseReplyHandle(handle);
+
+    return 0;
+}
+
+
 /* ---- redifs fuse operations ---- */
 struct fuse_operations redifs_oper = {
     .getattr = redifs_getattr,
@@ -456,6 +478,7 @@ struct fuse_operations redifs_oper = {
     .read = redifs_read,
     .write = redifs_write,
 	.truncate = redifs_truncate,
+	.unlink = redifs_unlink,
 };
 
 
