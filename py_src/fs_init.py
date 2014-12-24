@@ -221,6 +221,19 @@ def load_scripts():
 	""")
 
 
+	## Remove dir:
+	script_sha['dir_remove'] = rc.script_load(
+		helpers['findNodeIdExt'] + """
+		local dir = findNodeIdExt(ARGV[1])
+		if dir.id == false then return -1 end
+		if redis.call('hget', 'node:'.. dir.id, 'type') ~= 'dir' then return -2 end
+		if redis.call('hlen', 'node:'.. dir.id ..':entries') ~= 0 then return -3 end
+		redis.call('hdel', 'node:' .. dir.parentid .. ':entries', dir.basename)
+		redis.call('del', 'node:'.. dir.id, 'node:'.. dir.id ..':entries')
+		return 1
+	""")
+
+
 	# Write script ids:
 	rc.hmset('scripts', script_sha)
 

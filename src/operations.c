@@ -413,6 +413,33 @@ int redifs_link(const char* from_path, const char* to_path)
 }
 
 
+/* ---- rmdir ---- */
+int redifs_rmdir(const char* path)
+{
+    int handle;
+    long long result;
+
+    handle = redisCommand_SCRIPT_RMDIR(path, &result);
+    if (!handle)
+    {
+        return -EIO;
+    }
+
+    switch (result) {
+        case -1: return -ENOENT;
+        case -2: return -ENOTDIR;
+        case -3: return -ENOTEMPTY;
+    }
+    if (result <= 0) {
+        return -EIO; // Unexpected result.
+    }
+
+    releaseReplyHandle(handle);
+
+    return 0;
+}
+
+
 /* ---- redifs fuse operations ---- */
 struct fuse_operations redifs_oper = {
     .getattr = redifs_getattr,
@@ -428,6 +455,7 @@ struct fuse_operations redifs_oper = {
 	.truncate = redifs_truncate,
 	.unlink = redifs_unlink,
 	.link = redifs_link,
+	.rmdir = redifs_rmdir,
 };
 
 

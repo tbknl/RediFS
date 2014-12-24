@@ -26,6 +26,7 @@ enum {
 	SCRIPT_FILETRUNCATE,
 	SCRIPT_UNLINK,
 	SCRIPT_LINK,
+	SCRIPT_DIRREMOVE,
     NUM_SCRIPTS
 };
 #define MAX_SCRIPTHASH_LEN 64
@@ -58,6 +59,7 @@ extern int redisCommand_SCRIPT_FILECREATE(const char* path, const char* name, lo
 extern int redisCommand_SCRIPT_FILETRUNCATE(const char* path, long long length, long long* result);
 extern int redisCommand_SCRIPT_UNLINK(const char* path, long long* result);
 extern int redisCommand_SCRIPT_LINK(const char* from_path, const char* to_path, long long* result);
+extern int redisCommand_SCRIPT_RMDIR(const char* path, long long* result);
 
 
 #endif // _CONNECTION_H_
